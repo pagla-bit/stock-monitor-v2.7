@@ -35,10 +35,17 @@ from sklearn.preprocessing import StandardScaler
 import xgboost as xgb
 from statsmodels.tsa.arima.model import ARIMA
 from arch import arch_model
-from tensorflow import keras
-from tensorflow.keras.models import Sequential
-from tensorflow.keras.layers import LSTM, Dense, Dropout, SimpleRNN
-from tensorflow.keras.optimizers import Adam
+
+# TensorFlow/Keras - make optional
+try:
+    from tensorflow import keras
+    from tensorflow.keras.models import Sequential
+    from tensorflow.keras.layers import LSTM, Dense, Dropout, SimpleRNN
+    from tensorflow.keras.optimizers import Adam
+    TENSORFLOW_AVAILABLE = True
+except ImportError:
+    TENSORFLOW_AVAILABLE = False
+    st.warning("⚠️ TensorFlow not available. LSTM and RNN models will be skipped.")
 
 # Sentiment analysis dependencies
 try:
@@ -756,6 +763,9 @@ def train_arima_garch(df):
 
 def train_lstm(X_train, y_train, X_test, y_test):
     """Train LSTM neural network"""
+    if not TENSORFLOW_AVAILABLE:
+        return {'model': 'LSTM', 'error': 'TensorFlow not installed'}
+    
     try:
         # Reshape for LSTM [samples, time steps, features]
         X_train_lstm = X_train.values.reshape((X_train.shape[0], 1, X_train.shape[1]))
@@ -801,6 +811,9 @@ def train_lstm(X_train, y_train, X_test, y_test):
 
 def train_rnn(X_train, y_train, X_test, y_test):
     """Train Simple RNN neural network"""
+    if not TENSORFLOW_AVAILABLE:
+        return {'model': 'RNN', 'error': 'TensorFlow not installed'}
+    
     try:
         # Reshape for RNN
         X_train_rnn = X_train.values.reshape((X_train.shape[0], 1, X_train.shape[1]))
@@ -1001,10 +1014,11 @@ def run_ml_analysis(df):
 def calculate_ensemble_recommendation(ml_results):
     """
     Calculate weighted ensemble recommendation
-    Weights: RF=0.2, XGB=0.2, ARIMA+GARCH=0.15, LSTM=0.2, RNN=0.2, MC=0.1
+    Default weights: RF=0.2, XGB=0.2, ARIMA+GARCH=0.15, LSTM=0.2, RNN=0.2, MC=0.1
+    If LSTM/RNN are missing, weights are redistributed proportionally
     """
     # Default weights
-    weights = {
+    default_weights = {
         'Random Forest': 0.20,
         'XGBoost': 0.20,
         'ARIMA+GARCH': 0.15,
@@ -1012,6 +1026,21 @@ def calculate_ensemble_recommendation(ml_results):
         'RNN': 0.20,
         'Monte Carlo': 0.10
     }
+    
+    # Get available models
+    available_models = [result[0] for result in ml_results]
+    
+    # Calculate weights for available models only
+    weights = {}
+    total_default_weight = 0
+    for model in available_models:
+        weights[model] = default_weights.get(model, 0.1)
+        total_default_weight += weights[model]
+    
+    # Normalize weights to sum to 1.0
+    if total_default_weight > 0:
+        for model in weights:
+            weights[model] = weights[model] / total_default_weight
     
     buy_score = 0
     sell_score = 0
@@ -1634,7 +1663,13 @@ for ticker in tickers[:1]:  # Process first ticker only for now
             with col3:
                 st.metric("Model Agreement", agreement)
             
-            st.info("💡 Ensemble uses weighted voting: RF(0.2), XGB(0.2), ARIMA+GARCH(0.15), LSTM(0.2), RNN(0.2), MC(0.1)")
+            # Show which models were used
+            model_names = [r[0] for r in ml_results]
+            if TENSORFLOW_AVAILABLE:
+                st.info("💡 Ensemble uses weighted voting: RF(0.2), XGB(0.2), ARIMA+GARCH(0.15), LSTM(0.2), RNN(0.2), MC(0.1)")
+            else:
+                st.info("💡 Ensemble uses weighted voting: RF(0.25), XGB(0.25), ARIMA+GARCH(0.19), MC(0.31) - TensorFlow models skipped")
+                st.caption("ℹ️ Install TensorFlow to enable LSTM and RNN models: `pip install tensorflow tf-keras --break-system-packages`")
     
     # ==================== Backtest Results ====================
     
@@ -1738,9 +1773,10 @@ st.write("""
 - ✅ **Simplified Ticker Input** - Single input box with default stocks (AAPL, TSLA, AMZN)
 - ✅ **Speedometer Indicator** - Visual gauge for market sentiment (2 decimal places)
 - ✅ **Weighted Ensemble** - RF(0.2), XGB(0.2), ARIMA+GARCH(0.15), LSTM(0.2), RNN(0.2), MC(0.1)
+- ✅ **Optional TensorFlow** - App works without TensorFlow (LSTM/RNN skipped if not installed)
 - ✅ **Multi-Source News** - Finviz, Google News with dropdown selector
-- ✅ **News Sentiment Analysis** - FinBERT for financial sentiment
-- ✅ **Machine Learning Integration** - 6 different algorithms
+- ✅ **News Sentiment Analysis** - FinBERT for financial sentiment (PyTorch backend)
+- ✅ **Machine Learning Integration** - Up to 6 different algorithms (4 without TensorFlow)
 - ✅ **Strategy Backtesting** - With risk management (stop loss, take profit)
 - ✅ **Risk Analytics** - Sharpe, Sortino, Max Drawdown, Calmar ratio
 
@@ -1754,11 +1790,21 @@ st.write("""
 - ⚠️ Consider paper trading before using real capital
 
 ### Dependencies:
-- `pip install feedparser --break-system-packages` (for Google News)
-- `pip install transformers torch --break-system-packages` (for FinBERT with PyTorch backend - recommended)
-- Alternative: `pip install tf-keras --break-system-packages` (for FinBERT with TensorFlow backend)
+- **Required**: `pip install -r requirements.txt --break-system-packages`
+- **For FinBERT sentiment**: PyTorch (`torch`) - automatically used
+- **For LSTM/RNN models** (optional): TensorFlow (`tensorflow` + `tf-keras`)
 
-**Note on FinBERT:** If you see Keras 3 compatibility issues, the app will automatically try to use PyTorch backend. Make sure `torch` is installed.
+**Quick Start (minimum dependencies):**
+```bash
+pip install streamlit pandas numpy yfinance plotly scipy beautifulsoup4 requests feedparser
+pip install scikit-learn xgboost statsmodels arch torch transformers
+```
+
+**Full Install (with TensorFlow for LSTM/RNN):**
+```bash
+pip install -r requirements.txt --break-system-packages
+pip install tensorflow tf-keras --break-system-packages
+```
 
 ### Recommended Next Steps:
 1. Compare sentiment across different news sources
