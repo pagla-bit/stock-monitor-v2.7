@@ -994,7 +994,7 @@ def calculate_ensemble_recommendation(ml_results):
         'XGBoost': 0.20,
         'ARIMA+GARCH': 0.15,
         'LSTM': 0.20,
-        'RNN': 0.20,
+        'RNN': 0.15,
         'Monte Carlo': 0.10
     }
     
