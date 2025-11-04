@@ -309,12 +309,27 @@ def load_finbert_pipeline():
     Load FinBERT sentiment analysis pipeline (cached)
     """
     try:
+        # Set environment variable for TensorFlow to use Keras 3 compatibility
+        import os
+        os.environ['TF_USE_LEGACY_KERAS'] = '1'
+        
         from transformers import pipeline
-        sentiment_pipeline = pipeline("sentiment-analysis", model="ProsusAI/finbert")
+        import tensorflow as tf
+        
+        # Suppress TensorFlow warnings
+        tf.get_logger().setLevel('ERROR')
+        
+        sentiment_pipeline = pipeline("sentiment-analysis", model="ProsusAI/finbert", framework="pt")
         return sentiment_pipeline
     except Exception as e:
-        st.warning(f"Failed to load FinBERT: {e}")
-        return None
+        # Try PyTorch backend as fallback
+        try:
+            from transformers import pipeline
+            sentiment_pipeline = pipeline("sentiment-analysis", model="ProsusAI/finbert", framework="pt", device=-1)
+            return sentiment_pipeline
+        except Exception as e2:
+            st.warning(f"⚠️ FinBERT sentiment analysis unavailable. Install with: `pip install tf-keras --break-system-packages` or use PyTorch backend")
+            return None
 
 def analyze_sentiment_finbert(texts, pipeline):
     """
@@ -994,7 +1009,7 @@ def calculate_ensemble_recommendation(ml_results):
         'XGBoost': 0.20,
         'ARIMA+GARCH': 0.15,
         'LSTM': 0.20,
-        'RNN': 0.15,
+        'RNN': 0.20,
         'Monte Carlo': 0.10
     }
     
@@ -1740,7 +1755,10 @@ st.write("""
 
 ### Dependencies:
 - `pip install feedparser --break-system-packages` (for Google News)
-- `pip install transformers torch --break-system-packages` (for FinBERT)
+- `pip install transformers torch --break-system-packages` (for FinBERT with PyTorch backend - recommended)
+- Alternative: `pip install tf-keras --break-system-packages` (for FinBERT with TensorFlow backend)
+
+**Note on FinBERT:** If you see Keras 3 compatibility issues, the app will automatically try to use PyTorch backend. Make sure `torch` is installed.
 
 ### Recommended Next Steps:
 1. Compare sentiment across different news sources
